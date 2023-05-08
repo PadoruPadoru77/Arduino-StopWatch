@@ -1,0 +1,362 @@
+/*
+  StopWatch Project
+
+  Create a stopwatch with a timer, Pausey/Play Button
+  and Reset button.
+
+  The circuit:
+  - Arduino Uno R3 (or similar)
+  - (4-bit) 7-segment LED (SH5461AS or similar) connected through pins D2-D13
+  - 2 pushbuttons attatched to ground from A0 and A2
+  - 4 220 ohms resistors attatched to LED pins 12, 9, 8 and 6 (Or whatever your respective block pins are)
+  - Active buzzer attatch to ground from A3
+  - wires
+
+  - Note: on most Arduinos there is already an LED on the board
+    attached to pin 13.
+
+  created 5/7/2023
+  by Michael Schmidt
+*/
+
+/*
+  CONCEPT UNDERSTANDING
+
+  The 4-bit 7-segment LED does not have any onboard memory and does not display
+  individual numbers in each block simutaniously. Using the segment pins will
+  light up the pins for all the blocks. We can use the block pins to show which
+  block we wish to display, but to show multiple numbers, the computer need to
+  display 2 different segment pins combinations seperated by different block
+  pins sequentially fast enough to make it appear as individual numbers have appear
+  for each block. The code in RefreshClock() shows this by using delay(5) to give 
+  enough time to show the differences between 2 or more different segment pins combinations.
+
+  The button pins are set to INPUT_PULLUP as the pins will act as an output voltage HIGH
+  and when the button is pressed, it connects to the ground which completes the circuit
+  while the pin reads LOW. This is easier and uses no resistors, while just setting the
+  pin to be INPUT will require a resistor on the same leg connect to the pin to ensure
+  the completed circuit will pass through the pin.
+
+  The active buzzer will only make a tone when power goes through its pin, which is
+  set to be when the buttons are pressed.
+*/
+  
+  
+//pins for decimal point and each segment.
+const int pinA = 3;
+const int pinB = 5;
+const int pinC = 11;
+const int pinD = 9;
+const int pinE = 8;
+const int pinF = 4;
+const int pinG = 12;
+const int pinH = 10;    //This is the decimal point pin. Not nessessary for this project
+
+//pins for blocking display
+const int D1 = 13;
+const int D2 = 7;
+const int D3 = 6;
+const int D4 = 2;
+
+//Variable for buttons state
+int buttonPlayState = 0;
+int buttonResetState = 0;
+
+//Need for button Debounce
+int buttonPlayMillis = millis();
+int buttonResetMillis = millis();
+
+//Variable to play the timer or not
+bool timerOn = false;
+
+//Timer variable, unsigned as it will not be negative to save space
+unsigned int timer = 0; 
+
+//Timer to measure a second
+unsigned long currentMillis;
+unsigned long prevMillis = millis();
+
+
+void setup()
+{
+  pinMode(pinA, OUTPUT); //set segment and DP pins to output
+  pinMode(pinB, OUTPUT);
+  pinMode(pinC, OUTPUT);
+  pinMode(pinD, OUTPUT);
+  pinMode(pinE, OUTPUT);
+  pinMode(pinF, OUTPUT);
+  pinMode(pinG, OUTPUT);
+  pinMode(pinH, OUTPUT);
+  pinMode(D1, OUTPUT);
+  pinMode(D2, OUTPUT);
+  pinMode(D3, OUTPUT);
+  pinMode(D4, OUTPUT);
+  pinMode(A0, INPUT_PULLUP);  //Set buttons to INPUT_PULLUP to represent LOW when button pushed, and HIGH for when button open
+  pinMode(A2, INPUT_PULLUP);
+  pinMode(A3, OUTPUT);  //Set buzzer pin to OUTPUT
+}
+
+
+void loop()
+{
+  currentMillis = millis();  //Get current time since chip started
+  if (timer >= 10000) //If counter gets bigger than what it can represent (I.E. more than 4 sig figs) reset timer to 0
+  {
+    timer = 0;
+  }
+  if (currentMillis - prevMillis >= 1000 && timerOn)     //Make sure 1 second has passed and play state is on before adding to timer
+  {
+    prevMillis = currentMillis;
+    timer++;
+  }
+
+  buttonPlayState = digitalRead(A2);  //Read if Play button is pressed
+  buttonResetState = digitalRead(A0); //Read if Reset button is pressed
+
+  if (buttonResetState == LOW)     //Reset counter if pressed
+  {
+    if (currentMillis - buttonResetMillis >500)  //Need a debounce so its easier to press button
+    {
+      timer = 0;
+      buttonResetMillis = currentMillis;
+      digitalWrite(A3, HIGH);     //Play noise
+      delay(200);
+      digitalWrite(A3, LOW);
+    }
+  }
+
+  if (buttonPlayState == LOW)      //Pause/Play timer
+  {
+    if (currentMillis - buttonPlayMillis >500)  //Need a debounce so its easier to flip the boolean
+    {
+      timerOn = !timerOn; 
+      buttonPlayMillis = currentMillis;
+      digitalWrite(A3, HIGH);     //Play noise
+      delay(200);
+      digitalWrite(A3, LOW);
+    }
+  }
+
+  RefreshClock(timer);    //Update 7-segment LED
+  delay(10);  //To show effects
+}
+
+//Code to display timer on LED
+void RefreshClock(int timer)
+{
+  char time[4]; //Char array of max 4 sig figs
+  itoa(timer, time, 10); //Convert timer int to char array
+
+  if (timer < 10)   //If timer is 1 sig fig
+  {
+    int number = time[0] - '0';
+    if (number < 0)     //Will only be negative if error in code
+    {     
+      number = 0;   
+    }
+    write(number, 0);
+  }
+  if (timer >= 10 && timer <100)    //If timer is 2 sig fig
+  {
+    int number2 = time[0] - '0';      //C++ stores char as int value, 0 being 48, 3 being 51.
+    if (number2 < 0)                  //Easiest way to convert char to int is to sub '0'. I.E: 51(3)-48(0)=3
+    {
+      number2 = 0;
+    }
+    int number1 = time[1] - '0';
+    if (number1 < 0)
+    {
+      number1 = 0;
+    }
+    write(number2, 1);
+    delay(5);   //Delay to show effects
+    write(number1, 0);
+  }
+  if (timer >= 100 && timer <1000)    //If timer is 3 sig fig
+  {
+    int number3 = time[0] - '0';
+    if (number3 < 0)
+    {
+      number3 = 0;
+    }
+    int number2 = time[1] - '0';
+    if (number2 < 0)
+    {
+      number2 = 0;
+    }
+    int number1 = time[2] - '0';
+    if (number1 < 0)
+    {
+      number1 = 0;
+    }
+    write(number3, 2);
+    delay(5);
+    write(number2, 1);
+    delay(5);
+    write(number1, 0);
+  } 
+  if (timer >= 1000 )   //If timer is 4 sig fig
+  {
+    int number4 = time[0] - '0';
+    if (number4 < 0)
+    {
+      number4 = 0;
+    }
+    int number3 = time[1] - '0';
+    if (number3 < 0)
+    {
+      number3 = 0;
+    }
+    int number2 = time[2] - '0';
+    if (number2 < 0)
+    {
+      number2 = 0;
+    }
+    int number1 = time[3] - '0';
+    if (number1 < 0)
+    {
+      number1 = 0;
+    }
+    write(number4, 3);
+    delay(5);
+    write(number3, 2);
+    delay(5);
+    write(number2, 1);
+    delay(5);
+    write(number1, 0);
+  } 
+}
+
+//Code to write specific number in specific position on LED
+void write(int number, int position)
+{
+  if (position == 0)
+  {
+    digitalWrite(D1, LOW);    //LOW means no blocking, HIGH means position is blocked from changes and will not light up
+    digitalWrite(D2, HIGH);
+    digitalWrite(D3, HIGH);
+    digitalWrite(D4, HIGH);
+  }
+  else if (position == 1)
+  {
+    digitalWrite(D1, HIGH);
+    digitalWrite(D2, LOW);
+    digitalWrite(D3, HIGH);
+    digitalWrite(D4, HIGH);
+  }
+  else if (position == 2)
+  {
+    digitalWrite(D1, HIGH);
+    digitalWrite(D2, HIGH);
+    digitalWrite(D3, LOW);
+    digitalWrite(D4, HIGH);
+  }
+  else if (position == 3)
+  {
+    digitalWrite(D1, HIGH);
+    digitalWrite(D2, HIGH);
+    digitalWrite(D3, HIGH);
+    digitalWrite(D4, LOW);
+  }
+
+  if (number == 1)
+  {
+    digitalWrite(pinA, LOW);
+    digitalWrite(pinB, HIGH);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, LOW);
+    digitalWrite(pinE, LOW);
+    digitalWrite(pinF, LOW);
+    digitalWrite(pinG, LOW);
+  }
+  else if (number == 2)
+  {
+    digitalWrite(pinA, HIGH);
+    digitalWrite(pinB, HIGH);
+    digitalWrite(pinC, LOW);
+    digitalWrite(pinD, HIGH);
+    digitalWrite(pinE, HIGH);
+    digitalWrite(pinF, LOW);
+    digitalWrite(pinG, HIGH);
+  }
+  else if (number == 3)
+  {
+    digitalWrite(pinA, HIGH);
+    digitalWrite(pinB, HIGH);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, HIGH);
+    digitalWrite(pinE, LOW);
+    digitalWrite(pinF, LOW);
+    digitalWrite(pinG, HIGH);
+  }
+  else if (number == 4)
+  {
+     digitalWrite(pinA, LOW);
+   digitalWrite(pinB, HIGH);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, LOW);
+    digitalWrite(pinE, LOW);
+    digitalWrite(pinF, HIGH);
+    digitalWrite(pinG, HIGH);
+  }
+  else if (number == 5)
+  {
+    digitalWrite(pinA, HIGH);
+    digitalWrite(pinB, LOW);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, HIGH);
+    digitalWrite(pinE, LOW);
+    digitalWrite(pinF, HIGH);
+    digitalWrite(pinG, HIGH);
+  }
+  else if (number == 6)
+  {
+    digitalWrite(pinA, HIGH);
+    digitalWrite(pinB, LOW);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, HIGH);
+    digitalWrite(pinE, HIGH);
+    digitalWrite(pinF, HIGH);
+    digitalWrite(pinG, HIGH);
+  }
+  else if (number == 7)
+  {
+    digitalWrite(pinA, HIGH);
+    digitalWrite(pinB, HIGH);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, LOW);
+    digitalWrite(pinE, LOW);
+    digitalWrite(pinF, LOW);
+    digitalWrite(pinG, LOW);
+  }
+  else if (number == 8)
+  {
+    digitalWrite(pinA, HIGH);
+    digitalWrite(pinB, HIGH);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, HIGH);
+    digitalWrite(pinE, HIGH);
+    digitalWrite(pinF, HIGH);
+    digitalWrite(pinG, HIGH);
+  }
+  else if (number == 9)
+  {
+    digitalWrite(pinA, HIGH);
+    digitalWrite(pinB, HIGH);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, LOW);
+    digitalWrite(pinE, LOW);
+    digitalWrite(pinF, HIGH);
+    digitalWrite(pinG, HIGH);
+  }
+  else
+  {
+    digitalWrite(pinA, HIGH);
+    digitalWrite(pinB, HIGH);
+    digitalWrite(pinC, HIGH);
+    digitalWrite(pinD, HIGH);
+    digitalWrite(pinE, HIGH);
+    digitalWrite(pinF, HIGH);
+    digitalWrite(pinG, LOW);
+  }
+}
